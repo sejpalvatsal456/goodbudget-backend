@@ -59,53 +59,28 @@ This project exposes a set of REST endpoints for user accounts, authentication, 
 
 ### GET /users/
 - Full path: `http://localhost:3000/users/`
-- Auth required: No
+- Auth required: Yes (`Authorization: Bearer access token`)
 - Query params: None
-- Summary: Retrieves a limited list of users from the database.
+- Summary: Returns the authenticated user profile (`user_id`, `user_name`, `user_email`, `user_username`).
 - Failure cases covered:
-  - Database/connection issues (`500`)
-  - No explicit validation error is raised here; list results are gated by environment `RATE_LIMIT`
-
-### GET /users/:id
-- Full path: `http://localhost:3000/users/:id`
-- Auth required: No
-- Path params:
-  - `id` (UUID, required): user ID
-- Summary: Fetches a specific user by UUID.
-- Failure cases covered:
-  - invalid UUID (`400`)
-  - no matching user (`404`)
+  - invalid authenticated user ID (`400`)
+  - user not found (`404`)
   - database/server error (`500`)
-
-### POST /users/
-- Full path: `http://localhost:3000/users/`
-- Auth required: No
-- Body (JSON):
-  - `user_name` (string, required)
-  - `user_email` (string, required)
-  - `user_username` (string, required)
-  - `user_password` (string, required)
-- Summary: Creates a user record directly without JWT-based authentication.
-- Failure cases covered:
-  - invalid `user_name` length/content
-  - invalid `user_username` format
-  - invalid `user_password` policy
-  - duplicate username (`409`)
-  - missing `HASH_SALT` config (`500`)
-  - database error or insert failure (`500`)
 
 ### PATCH /users/
 - Full path: `http://localhost:3000/users/`
-- Auth required: No
+- Auth required: Yes (`Authorization: Bearer access token`)
 - Body (JSON):
-  - `user_id` (UUID, required)
-  - optional: `user_name`, `user_email`, `user_username`, `user_password`
-- Summary: Updates one or more user fields for the specified user.
+  - optional: `user_name` (string)
+  - optional: `user_email` (string)
+  - optional: `user_username` (string)
+  - optional: `user_password` (string)
+- Summary: Updates one or more fields on the authenticated user profile.
 - Failure cases covered:
-  - invalid `user_id` (`400`)
   - invalid `user_name` format (`400`)
   - invalid `user_username` format (`400`)
   - invalid `user_password` policy (`400`)
+  - invalid authenticated user ID (`400`)
   - user does not exist (`404`)
   - no update fields provided (`400`)
   - missing `HASH_SALT` config (`500`)
@@ -113,12 +88,11 @@ This project exposes a set of REST endpoints for user accounts, authentication, 
 
 ### DELETE /users/
 - Full path: `http://localhost:3000/users/`
-- Auth required: No
-- Body (JSON):
-  - `user_id` (UUID, required)
-- Summary: Permanently deletes a user record.
+- Auth required: Yes (`Authorization: Bearer access token`)
+- Query params: None
+- Summary: Permanently deletes the authenticated user record.
 - Failure cases covered:
-  - invalid UUID (`400`)
+  - invalid authenticated user ID (`400`)
   - user not found (`404`)
   - database/server error (`500`)
 
@@ -126,46 +100,47 @@ This project exposes a set of REST endpoints for user accounts, authentication, 
 
 ### GET /accounts/
 - Full path: `http://localhost:3000/accounts/`
-- Auth required: No
+- Auth required: Yes (`Authorization: Bearer <access token>`)
 - Query params: None
-- Summary: Returns a paginated list of account rows using the configured `RATE_LIMIT`.
+- Summary: Returns the authenticated user's accounts, limited by the configured `RATE_LIMIT`.
 - Failure cases covered:
+  - invalid authenticated user ID (`400`)
   - database/server error (`500`)
 
 ### GET /accounts/:id
 - Full path: `http://localhost:3000/accounts/:id`
-- Auth required: No
+- Auth required: Yes (`Authorization: Bearer <access token>`)
 - Path params:
-  - `id` (UUID, required)
-- Summary: Finds one account by ID.
+  - `id` (UUID, required): account ID
+- Summary: Retrieves a single account owned by the authenticated user.
 - Failure cases covered:
-  - invalid UUID (`400`)
-  - account not found (`404`)
+  - invalid account ID (`400`)
+  - no matching account for that user (`404`)
   - database/server error (`500`)
 
 ### POST /accounts/
 - Full path: `http://localhost:3000/accounts/`
-- Auth required: Yes (`Authorization: Bearer + access token string`)
+- Auth required: Yes (`Authorization: Bearer <access token>`)
 - Body (JSON):
-  - `acc_name` (string, required)
+  - `acc_name` (string, required): non-empty, max 60 chars
   - `acc_type` (string, required): one of `cash`, `saving`, `credit_card`, `current`
-  - `acc_balance` (number, required): must be >= 0
-- Summary: Creates a new account associated with the authenticated user.
+  - `acc_balance` (number, required): must be greater than 0
+- Summary: Creates a new account linked to the authenticated user.
 - Failure cases covered:
   - invalid or empty account name (`400`)
-  - negative balance (`400`)
+  - invalid balance (`400`)
   - invalid account type (`400`)
   - invalid authenticated user ID (`400`)
-  - user not found (`404`)
+  - user does not exist (`404`)
   - database/server error (`500`)
 
 ### PATCH /accounts/
 - Full path: `http://localhost:3000/accounts/`
-- Auth required: Yes (`Authorization: Bearer + access token string`)
+- Auth required: Yes (`Authorization: Bearer <access token>`)
 - Body (JSON):
   - `acc_id` (UUID, required)
   - optional: `acc_name`, `acc_type`, `acc_is_disabled`
-- Summary: Updates account fields only for the authenticated user’s account.
+- Summary: Updates one or more account fields only if the account belongs to the authenticated user.
 - Failure cases covered:
   - invalid `acc_id` (`400`)
   - invalid `acc_name` (`400`)
@@ -176,69 +151,51 @@ This project exposes a set of REST endpoints for user accounts, authentication, 
 
 ### DELETE /accounts/
 - Full path: `http://localhost:3000/accounts/`
-- Auth required: Yes (`Authorization: Bearer + access token string`)
+- Auth required: Yes (`Authorization: Bearer <access token>`)
 - Body (JSON):
   - `acc_id` (UUID, required)
-- Summary: Deletes the specified account only if it belongs to the authenticated user.
+- Summary: Soft-deletes the specified account by marking it disabled for the authenticated user.
 - Failure cases covered:
+  - invalid authenticated user ID (`400`)
   - invalid account ID (`400`)
-  - account not found or not owned by user (`404`)
-  - malformed SQL in delete query may trigger a server error (`500`)
+  - account not found or does not belong to the user (`404`)
+  - account already disabled (`409`)
   - database/server error (`500`)
 
 ## 5) Transactions
 
-### GET /transactions/
-- Full path: `http://localhost:3000/transactions/`
-- Auth required: No
-- Query params: None
-- Summary: Returns recent transactions sorted by `created_at` descending, limited by environment `RATE_LIMIT`.
-- Failure cases covered:
-  - database/server error (`500`)
-
 ### GET /transactions/:id
 - Full path: `http://localhost:3000/transactions/:id`
-- Auth required: No
+- Auth required: Yes (`Authorization: Bearer <access token>`)
 - Path params:
-  - `id` (UUID, required): transaction id
-- Summary: Fetches a single transaction by UUID.
+  - `id` (UUID, required): transaction ID
+- Summary: Fetches a single transaction for the authenticated user.
 - Failure cases covered:
   - invalid transaction ID (`400`)
   - transaction not found (`404`)
   - database/server error (`500`)
 
-### GET /transactions/user/:id
-- Full path: `http://localhost:3000/transactions/user/:id`
-- Auth required: No
-- Path params:
-  - `id` (UUID, required): user ID
-- Summary: Lists all transactions for a specific user sorted by date and creation time.
-- Failure cases covered:
-  - invalid user ID (`400`)
-  - user not found (`404`)
-  - database/server error (`500`)
-
 ### GET /transactions/account/:id
 - Full path: `http://localhost:3000/transactions/account/:id`
-- Auth required: No
+- Auth required: Yes (`Authorization: Bearer <access token>`)
 - Path params:
   - `id` (UUID, required): account ID
-- Summary: Lists all transactions for a specific account.
+- Summary: Lists all transactions for a specific account owned by the authenticated user, ordered by transaction date and creation time.
 - Failure cases covered:
   - invalid account ID (`400`)
-  - account not found (`404`)
+  - account not found for that user (`404`)
   - database/server error (`500`)
 
 ### POST /transactions/
 - Full path: `http://localhost:3000/transactions/`
-- Auth required: Yes (`Authorization: Bearer + access token string`)
+- Auth required: Yes (`Authorization: Bearer <access token>`)
 - Body (JSON):
   - `account_id` (UUID, required)
   - `tran_merchant` (string, required)
   - `tran_type` (string, required): `income` or `expense`
-  - `tran_amount` (number, required): must be > 0
+  - `tran_amount` (number, required): must be greater than 0
   - optional: `tran_desc`, `tran_status`, `tran_mode`, `tran_date`
-- Summary: Creates a transaction for the authenticated user and updates the account balance immediately.
+- Summary: Creates a transaction for the authenticated user and updates the linked account balance immediately.
 - Failure cases covered:
   - invalid authenticated user ID (`400`)
   - invalid `account_id` (`400`)
@@ -248,18 +205,18 @@ This project exposes a set of REST endpoints for user accounts, authentication, 
   - invalid `tran_status` (`400`)
   - invalid `tran_mode` (`400`)
   - invalid `tran_date` (`400`)
-  - account does not exist or not belong to user (`404`)
-  - invalid PostgreSQL enum or foreign key errors (`400`)
-  - missing required DB field (`400`)
+  - account does not exist or does not belong to the user (`404`)
+  - invalid PostgreSQL enum or foreign key values (`400`)
+  - missing required database field (`400`)
   - database/server error (`500`)
 
 ### PATCH /transactions/
 - Full path: `http://localhost:3000/transactions/`
-- Auth required: Yes (`Authorization: Bearer + access token string`)
+- Auth required: Yes (`Authorization: Bearer <access token>`)
 - Body (JSON):
   - `tran_id` (UUID, required)
   - optional: `tran_desc`, `tran_status`, `tran_merchant`, `tran_mode`, `tran_date`
-- Summary: Updates transaction fields for the authenticated user's transaction while keeping the row active (`deleted_at IS NULL`).
+- Summary: Updates transaction fields for the authenticated user's active transaction (`deleted_at IS NULL`).
 - Failure cases covered:
   - invalid `tran_id` (`400`)
   - invalid `tran_status` (`400`)
@@ -272,7 +229,7 @@ This project exposes a set of REST endpoints for user accounts, authentication, 
 
 ### DELETE /transactions/
 - Full path: `http://localhost:3000/transactions/`
-- Auth required: Yes (`Authorization: Bearer + access token string`)
+- Auth required: Yes (`Authorization: Bearer <access token>`)
 - Body (JSON):
   - `tran_id` (UUID, required)
 - Summary: Soft deletes a transaction and reverses the account balance impact for the authenticated user.

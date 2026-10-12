@@ -5,9 +5,12 @@ import { validateAccountType, validateBalance, validateName } from "../lib/valid
 
 export const getAllAccountsController = async(req: Request, res: Response) => {
   try {
+
+    const user_id = req.auth!.id;
+
     const RATE_LIMIT = process.env.RATE_LIMIT || "10";
-    const query = "SELECT * FROM accounts LIMIT $1";
-    const result = await pool.query(query, [parseInt(RATE_LIMIT)]);
+    const query = "SELECT * FROM accounts WHERE user_id = $1 LIMIT $2";
+    const result = await pool.query(query, [user_id, parseInt(RATE_LIMIT)]);
 
     return res.json({
       msg: "ok",
@@ -25,14 +28,16 @@ export const getAllAccountsController = async(req: Request, res: Response) => {
 export const getSpecificAccountController = async(req: Request, res: Response) => {
   try {
     const acc_id = req.params.id as string;
+    const user_id = req.auth!.id;
+
     if(!validate(acc_id)) {
       return res.status(400).json({
         msg: "Invalid Account Id."
       });
     }
 
-    const query = "SELECT * FROM accounts WHERE acc_id = $1";
-    const result = await pool.query(query, [acc_id]);
+    const query = "SELECT * FROM accounts WHERE acc_id = $1 AND user_id = $2";
+    const result = await pool.query(query, [acc_id, user_id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({
@@ -194,36 +199,60 @@ export const updateAccountController = async(req: Request, res: Response) => {
   }
 };
 
-export const deleteAccountController = async(req: Request, res: Response) => {
+export const softDeleteAccountController = async (
+  req: Request,
+  res: Response,
+) => {
   try {
-    const { acc_id } = req.body as { acc_id: string };
     const user_id: string = req.auth!.id;
+    const acc_id = req.body.acc_id;
 
+    // -------------------------
+    // Validate IDs
+    // -------------------------
 
-    if(!validate(acc_id)) {
-      return res.status(400).json({
-        msg: "Invalid Account ID."
+    if (!validate(user_id)) {
+      return res.status(400).json({ msg: "Invalid user id." });
+    }
+
+    if (!validate(acc_id)) {
+      return res.status(400).json({ msg: "Invalid account id." });
+    }
+
+    // -------------------------
+    // Soft delete (single atomic statement)
+    // -------------------------
+
+    const result = await pool.query(
+      `UPDATE accounts
+       SET acc_is_disabled = true, updated_at = now()
+       WHERE acc_id = $1 AND user_id = $2 AND acc_is_disabled = false
+       RETURNING acc_id, acc_type, acc_name, acc_balance, acc_is_disabled, updated_at`,
+      [acc_id, user_id],
+    );
+
+    if (result.rows.length > 0) {
+      return res.status(200).json({
+        msg: "ok",
+        result: result.rows[0],
       });
     }
 
-    const deleteQuery = "DELETE FROM accounts WHERE acc_id = $1 ABD user_id = $2 RETURNING *";
-    const deleteResult = await pool.query(deleteQuery, [acc_id, user_id]);
+    // Nothing updated: either it doesn't exist / isn't theirs, or it's already disabled
+    const existing = await pool.query(
+      "SELECT acc_is_disabled FROM accounts WHERE acc_id = $1 AND user_id = $2;",
+      [acc_id, user_id],
+    );
 
-    if(deleteResult.rows.length === 0) {
+    if (existing.rows.length === 0) {
       return res.status(404).json({
-        msg: "Account with this acc_id and user_id doesn't exist."
+        msg: "Account doesn't exist or doesn't belong to this user.",
       });
     }
 
-    return res.json({
-      msg: "ok",
-      result: deleteResult.rows[0]
-    });
-
-  } catch (error) {
+    return res.status(409).json({ msg: "Account is already deleted." });
+  } catch (error: unknown) {
     console.error(error);
-    return res.status(500).json({
-      msg: "Internal Server Error."
-    });
+    return res.status(500).json({ msg: "Internal Server Error." });
   }
-}
+};

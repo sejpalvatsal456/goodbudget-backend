@@ -11,39 +11,6 @@ import {
 } from "../lib/validations.js";
 
 // ---------------------------------------------------------
-// GET ALL TRANSACTIONS
-// ---------------------------------------------------------
-
-export const getAllTransactionsController = async (
-  req: Request,
-  res: Response,
-) => {
-  try {
-    const RATE_LIMIT = process.env.RATE_LIMIT || "10";
-
-    const query = `
-      SELECT *
-      FROM transactions
-      ORDER BY "created_at" DESC
-      LIMIT $1
-    `;
-
-    const result = await pool.query(query, [parseInt(RATE_LIMIT)]);
-
-    return res.json({
-      msg: "ok",
-      result: result.rows,
-    });
-  } catch (error) {
-    console.error(error);
-
-    return res.status(500).json({
-      msg: "Internal Server Error.",
-    });
-  }
-};
-
-// ---------------------------------------------------------
 // GET SPECIFIC TRANSACTION
 // ---------------------------------------------------------
 
@@ -53,6 +20,7 @@ export const getSpecificTransactionController = async (
 ) => {
   try {
     const tran_id = req.params.id as string;
+    const user_id = req.auth!.id;
 
     if (!validate(tran_id)) {
       return res.status(400).json({
@@ -63,10 +31,10 @@ export const getSpecificTransactionController = async (
     const query = `
       SELECT *
       FROM transactions
-      WHERE tran_id = $1
+      WHERE tran_id = $1 AND user_id = $2
     `;
 
-    const result = await pool.query(query, [tran_id]);
+    const result = await pool.query(query, [tran_id, user_id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({
@@ -88,35 +56,15 @@ export const getSpecificTransactionController = async (
 };
 
 // ---------------------------------------------------------
-// GET ALL TRANSACTIONS FOR SPECIFIC USER
+// GET ALL TRANSACTIONS
 // ---------------------------------------------------------
 
-export const getAllTransactionForSpecificUser = async (
+export const getAllTransaction = async (
   req: Request,
   res: Response,
 ) => {
   try {
-    const user_id = req.params.id as string;
-
-    if (!validate(user_id)) {
-      return res.status(400).json({
-        msg: "Invalid user id.",
-      });
-    }
-
-    const existedUserQuery = `
-      SELECT user_id
-      FROM users
-      WHERE user_id = $1
-    `;
-
-    const existedUserResult = await pool.query(existedUserQuery, [user_id]);
-
-    if (existedUserResult.rows.length === 0) {
-      return res.status(404).json({
-        msg: "User with this id doesn't exist.",
-      });
-    }
+    const user_id = req.auth!.id;
 
     const query = `
       SELECT *
@@ -150,6 +98,7 @@ export const getAllTransactionForSpecificAccount = async (
 ) => {
   try {
     const account_id = req.params.id as string;
+    const user_id = req.auth!.id;
 
     if (!validate(account_id)) {
       return res.status(400).json({
@@ -160,11 +109,12 @@ export const getAllTransactionForSpecificAccount = async (
     const existedAccountQuery = `
       SELECT acc_id
       FROM accounts
-      WHERE acc_id = $1
+      WHERE acc_id = $1 AND user_id = $2
     `;
 
     const existedAccountResult = await pool.query(existedAccountQuery, [
       account_id,
+      user_id
     ]);
 
     if (existedAccountResult.rows.length === 0) {
@@ -176,11 +126,11 @@ export const getAllTransactionForSpecificAccount = async (
     const query = `
       SELECT *
       FROM transactions
-      WHERE account_id = $1
+      WHERE account_id = $1 and user_id = $2
       ORDER BY tran_date DESC, "created_at" DESC
     `;
 
-    const result = await pool.query(query, [account_id]);
+    const result = await pool.query(query, [account_id, user_id]);
 
     return res.json({
       msg: "ok",
@@ -318,6 +268,29 @@ export const issueTransactionController = async (
     }
 
     await client.query("BEGIN");
+
+    // get the account details
+
+    const accountResult = await client.query("SELECT acc_type, acc_balance FROM accounts WHERE acc_id = $1 AND user_id = $2 FOR UPDATE;", [account_id, user_id]);
+
+    if (accountResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ msg: "Account doesn't exist or doesn't belong to this user." });
+    }
+
+    const { acc_type } = accountResult.rows[0];
+    const acc_balance = Number(accountResult.rows[0].acc_balance)
+
+    if (
+      ["cash", "current", "saving"].includes(acc_type) &&
+      tran_type === "expense" &&
+      tran_amount > acc_balance
+    ) {
+      await client.query("ROLLBACK");
+      return res.status(422).json({
+        msg: "Transaction amount is greater than account balance, it can not be processed.",
+      });
+    }
 
     const balanceUpdateQuery = `
       UPDATE accounts

@@ -1,13 +1,13 @@
 import { Router } from "express";
-import { createAccountController, deleteAccountController, getAllAccountsController, getSpecificAccountController, updateAccountController } from "../controllers/accountsController.js";
+import { createAccountController, getAllAccountsController, getSpecificAccountController, softDeleteAccountController, updateAccountController } from "../controllers/accountsController.js";
 import { authMiddleware } from "../middlewares/authMidddleware.js";
 
 const accountsRouter = Router();
 
-accountsRouter.get('/', getAllAccountsController);
-accountsRouter.get('/:id', getSpecificAccountController);
+accountsRouter.get('/', authMiddleware, getAllAccountsController);
+accountsRouter.get('/:id', authMiddleware, getSpecificAccountController);
 accountsRouter.post('/',authMiddleware, createAccountController);
 accountsRouter.patch('/', authMiddleware, updateAccountController);
-accountsRouter.delete('/', authMiddleware, deleteAccountController);
+accountsRouter.delete('/', authMiddleware, softDeleteAccountController);
 
 export default accountsRouter;

@@ -10,19 +10,9 @@ if (!Number.isInteger(RATE_LIMIT) || RATE_LIMIT <= 0) {
   throw new Error("Invalid RATE_LIMIT");
 }
 
-export const getUsersController = async(req: Request, res: Response) => {
-  const query = `SELECT user_id, user_name, user_email, user_username FROM users LIMIT $1`;
-  const result = await pool.query(query, [RATE_LIMIT]);
-  console.log(result);
-  return res.json({
-    "msg": "ok",
-    "data": result.rows
-  });
-};
-
 export const getSpecificUserController = async(req: Request, res: Response) => {
   try {
-    const user_id = req.params.id;
+    const user_id = req.auth!.id;
     if (!validate(user_id)) {
       return res.status(400).json({ "msg": "Invalid User ID." });
     }
@@ -49,60 +39,10 @@ export const getSpecificUserController = async(req: Request, res: Response) => {
   }
 };
 
-export const createUserController = async(req: Request, res: Response) => {
-  try {
-    // const { user_name, user_email, user_username, user_password } = req.body as { user_name: string, user_email: string, user_username: string, user_password: string };
-
-    const user_name: string = req.body.user_name.trim();
-    const user_email: string = req.body.user_email.trim();
-    const user_username: string = req.body.user_username.trim();
-    const user_password: string = req.body.user_password;
-
-    if(!validateName(user_name)) {
-      return res.status(400).json({ msg: "Name should be non empty and should be less than 60 characters." });
-    }
-    if(!validateUsername(user_username)) {
-      return res.status(400).json({ msg: "Username should be non empty, should only have lowercase, numeric or . _" });
-    }
-    if(!validatePassword(user_password)) {
-      return res.status(400).json({ msg: "Password should be more than 8 characters, atleast one uppercase, one number adn one special character." });
-    }
-
-    const getUserQuery = `SELECT user_id FROM users WHERE user_username = $1`;
-
-    const userExistResult = await pool.query(getUserQuery, [user_username]);
-    // console.log(getUserQuery);
-    if (userExistResult.rows.length > 0) {
-      return res.status(409).json({
-        "msg": "User already exist."
-      });
-    }
-
-    const hash_salt = process.env.HASH_SALT;
-    if (!hash_salt) {
-      return res.status(500).json({
-        "msg": "Hash salt is not set."
-      }); 
-    }
-
-    const hashPassword = await bcrypt.hash(user_password, parseInt(hash_salt));
-
-    const userCreateQuery = `INSERT INTO users(user_name, user_email, user_username, user_password) VALUES($1, $2, $3, $4) RETURNING user_id, user_name, user_email, user_username`;
-    const insertUserResult = await pool.query(userCreateQuery, [user_name, user_email, user_username, hashPassword]);
-    // console.log(insertUserResult);
-    return res.json({
-      "result": insertUserResult.rows[0]
-    })
-
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ "msg": error });
-  }
-}
 
 export const updateUserController = async(req: Request, res: Response) => {
   try {
-    const user_id: string = req.body.user_id;
+    const user_id: string = req.auth!.id;
     const user_name: string | undefined = req.body.user_name?.trim();
     const user_email: string | undefined = req.body.user_email?.trim();
     const user_username: string | undefined = req.body.user_username?.trim();
@@ -190,7 +130,7 @@ export const updateUserController = async(req: Request, res: Response) => {
 
 export const deleteUserontroller = async(req: Request, res: Response) => {
   try {
-    const { user_id } = req.body as { user_id: string };
+    const user_id = req.auth!.id;
 
     if (!validate(user_id)) {
       return res.status(400).json({ "msg": "Invalid User ID." });
