@@ -199,13 +199,13 @@ export const loginController = async (req: Request, res: Response) => {
       { expiresIn: "7d", algorithm: "HS256" },
     );
 
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: "/auth",
-    });
+    // res.cookie("refreshToken", refreshToken, {
+    //   httpOnly: true,
+    //   secure: true,
+    //   sameSite: "strict",
+    //   maxAge: 7 * 24 * 60 * 60 * 1000,
+    //   path: "/auth",
+    // });
 
     return res.status(200).json({
       msg: "ok",
@@ -216,6 +216,7 @@ export const loginController = async (req: Request, res: Response) => {
         user_username: user.user_username,
       },
       accessToken,
+      refreshToken
     });
   } catch (error) {
     console.error(error);
