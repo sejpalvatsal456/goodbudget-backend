@@ -1,8 +1,6 @@
 // Extends Express's Request type so `req.auth` is recognized by TypeScript
 // wherever it's used, after authMiddleware has run.
 
-export {};
-
 declare global {
   namespace Express {
     interface Request {
@@ -12,3 +10,5 @@ declare global {
     }
   }
 }
+
+export {};
