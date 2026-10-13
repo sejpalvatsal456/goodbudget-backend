@@ -1,3 +1,4 @@
+import './types/express.js';
 import express, { Request, Response } from 'express';
 import usersRouter from './routes/usersRoute.js';
 import dotenv from 'dotenv';
