@@ -2,24 +2,28 @@ import './types/express.js';
 import express, { Request, Response } from 'express';
 import usersRouter from './routes/usersRoute.js';
 import dotenv from 'dotenv';
+import 'dotenv/config';
 import accountsRouter from './routes/accountsRoute.js';
 import summaryRouter from './routes/summaryRoutes.js';
 import authRouter from './routes/authRoute.js';
 import transactionsRouter from './routes/transactionsRoute.js';
 import cors from 'cors';
 import categoryRoute from './routes/categoryRoute.js';
+import { testDatabaseConnection } from './controllers/dbTestController.js';
 
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json())
+app.use(express.json());
+
 app.get('/test', (req: Request, res: Response) => {
   return res.json({
     msg: "ok"
   })
-})
+});
+app.get('/testdb/', testDatabaseConnection);
 app.use('/users/', usersRouter);
 app.use('/accounts/', accountsRouter);
 app.use('/transactions/', transactionsRouter);
