@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { deleteUserontroller, getSpecificUserController, updateUserController } from "../controllers/usersController.js";
+import { deleteUserontroller, getBalanceController, getSpecificUserController, updateUserController } from "../controllers/usersController.js";
 import { authMiddleware } from "../middlewares/authMidddleware.js";
 
 
@@ -10,5 +10,6 @@ usersRouter.get("/", authMiddleware, getSpecificUserController);
 // usersRouter.post('/', createUserController);
 usersRouter.patch('/', authMiddleware, updateUserController);
 usersRouter.delete('/', authMiddleware, deleteUserontroller);
+usersRouter.get('/getBalance', authMiddleware, getBalanceController);
 
 export default usersRouter;

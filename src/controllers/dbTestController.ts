@@ -3,21 +3,16 @@ import pool from "../lib/pgInit.js";
 
 export const testDatabaseConnection = async (
   _req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const result = await pool.query(`
-      SELECT
-        NOW() AS server_time,
-        current_database() AS database_name,
-        current_user AS database_user,
-        version() AS postgres_version
+      SELECT * FROM users;
     `);
 
     res.status(200).json({
       success: true,
-      message: "Connected to PostgreSQL successfully!",
-      database: result.rows[0],
+      database: result.rows,
     });
   } catch (error) {
     console.error("Neon DB connection error:", error);
@@ -25,10 +20,7 @@ export const testDatabaseConnection = async (
     res.status(500).json({
       success: false,
       message: "Failed to connect to PostgreSQL.",
-      error:
-        error instanceof Error
-          ? error.message
-          : "Unknown database error",
+      error: error instanceof Error ? error.message : "Unknown database error",
     });
   }
 };

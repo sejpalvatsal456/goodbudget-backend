@@ -156,3 +156,20 @@ export const deleteUserontroller = async(req: Request, res: Response) => {
     return res.status(500).json({ "msg": error });
   }
 }
+
+export const getBalanceController = async(req: Request, res: Response) => {
+  try {
+    const user_id = req.auth?.id;
+    const query = "SELECT SUM(acc_balance) as total_balance FROM accounts WHERE user_id = $1 AND acc_type <> 'credit_card'";
+    const result = await pool.query(query, [user_id]);
+
+    return res.json({
+      msg: "ok",
+      balance: Number.parseFloat(result.rows[0].total_balance)
+    })
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ "msg": error });
+  }
+}
