@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { getAllTransactionForSpecificAccount, getSpecificTransactionController, issueTransactionController, updateTransactionController, softDeleteTransactionController } from "../controllers/transactionsController.js";
+import { getAllTransactionForSpecificAccount, getSpecificTransactionController, issueTransactionController, updateTransactionController, softDeleteTransactionController, getAllTransaction } from "../controllers/transactionsController.js";
 import { authMiddleware } from "../middlewares/authMidddleware.js";
 
 const transactionsRouter = Router();
 
-// transactionsRouter.get('/', getAllTransactionsController);
+transactionsRouter.get('/', authMiddleware, getAllTransaction);
 transactionsRouter.get('/:id', authMiddleware, getSpecificTransactionController);
 // transactionsRouter.get("/user/:id", getAllTransactionForSpecificUser);
 transactionsRouter.get('/account/:id', authMiddleware, getAllTransactionForSpecificAccount);

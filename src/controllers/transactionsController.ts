@@ -10,6 +10,8 @@ import {
   validateTransactionType,
 } from "../lib/validations.js";
 
+const RATE_LIMIT = Number.parseInt(process.env.RATE_LIMIT ?? "10", 10);
+
 // ---------------------------------------------------------
 // GET SPECIFIC TRANSACTION
 // ---------------------------------------------------------
@@ -65,15 +67,18 @@ export const getAllTransaction = async (
 ) => {
   try {
     const user_id = req.auth!.id;
+    const offset = req.query.offset;
 
     const query = `
       SELECT *
       FROM transactions
       WHERE user_id = $1
       ORDER BY tran_date DESC, "created_at" DESC
+      LIMIT $2
+      OFFSET $3
     `;
 
-    const result = await pool.query(query, [user_id]);
+    const result = await pool.query(query, [user_id, RATE_LIMIT, offset]);
 
     return res.json({
       msg: "ok",
@@ -311,6 +316,7 @@ export const issueTransactionController = async (
       VALUES (${placeholders})
       RETURNING *
     `;
+    console.log(insertQuery);
     const transactionResult = await client.query(insertQuery, insertedValues);
 
     await client.query("COMMIT");

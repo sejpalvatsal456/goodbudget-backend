@@ -164,6 +164,16 @@ This project exposes a set of REST endpoints for user accounts, authentication, 
 
 ## 5) Transactions
 
+### GET /transactions/
+- Full path: `http://localhost:3000/transactions/`
+- Auth required: Yes (`Authorization: ****** token>`)
+- Query params:
+  - `offset` (non-negative integer, optional; defaults to `0`): number of transactions to skip
+- Summary: Lists the authenticated user's transactions ordered by transaction date and creation time, newest first. Each response contains at most `RATE_LIMIT` transactions (`10` by default).
+- Failure cases covered:
+  - invalid `offset` value causing a database query error (`500`)
+  - database/server error (`500`)
+
 ### GET /transactions/:id
 - Full path: `http://localhost:3000/transactions/:id`
 - Auth required: Yes (`Authorization: Bearer <access token>`)
@@ -376,5 +386,5 @@ This project exposes a set of REST endpoints for user accounts, authentication, 
 
 ## Notes and caveats
 - Some routes are mounted with trailing slashes or path segments; ensure you match the exact path used in Express registration.
-- Several endpoints rely on the database schema and environment variables such as `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, and `HASH_SALT`.
+- Several endpoints rely on the database schema and environment variables such as `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `HASH_SALT`, and `RATE_LIMIT` (which controls the maximum number of transactions returned by `GET /transactions/`; defaults to `10`).
 - The project includes a few inconsistencies between route declarations and controller logic (for example, some body keys differ from the database field names or a delete query string contains a typo in the account route). This README documents the implemented behavior as written in the controllers.
