@@ -276,7 +276,7 @@ export const refreshController = async(req: Request, res: Response) => {
       decoded = jwt.verify(refreshToken, refreshSecret);
       console.log(typeof decoded);
     } catch {
-      console.log("Here")
+      // console.log("Here")
       return res.status(401).json({
         msg: "Invalid refresh Token. Please log in again."
       });

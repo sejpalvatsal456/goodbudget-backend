@@ -9,7 +9,7 @@ export const getAllAccountsController = async(req: Request, res: Response) => {
     const user_id = req.auth!.id;
 
     const RATE_LIMIT = process.env.RATE_LIMIT || "10";
-    const query = "SELECT * FROM accounts WHERE user_id = $1 LIMIT $2";
+    const query = "SELECT * FROM accounts WHERE user_id = $1 AND acc_is_disabled = FALSE LIMIT $2";
     const result = await pool.query(query, [user_id, parseInt(RATE_LIMIT)]);
 
     return res.json({
