@@ -1,12 +1,16 @@
 import { Request, Response } from "express";
-import { validateEmail, validateName, validatePassword, validateUsername } from "../lib/validations.js";
+import {
+  validateEmail,
+  validateName,
+  validatePassword,
+  validateUsername,
+} from "../lib/validations.js";
 import pool from "../lib/pgInit.js";
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 
-export const signupController = async(req: Request, res: Response) => {
+export const signupController = async (req: Request, res: Response) => {
   try {
-
     if (!process.env.JWT_ACCESS_SECRET) {
       throw new Error("JWT_ACCESS_SECRET is not configured");
     }
@@ -14,7 +18,7 @@ export const signupController = async(req: Request, res: Response) => {
     if (!process.env.JWT_REFRESH_SECRET) {
       throw new Error("JWT_REFRESH_SECRET is not configured");
     }
-    console.log(req.body)
+    console.log(req.body);
     const raw_name = req.body.name;
     const raw_email = req.body.email;
     const raw_username = req.body.username;
@@ -22,27 +26,27 @@ export const signupController = async(req: Request, res: Response) => {
 
     // Validate name, email, username, password types
 
-    if(typeof raw_name !== "string") {
+    if (typeof raw_name !== "string") {
       return res.status(400).json({
-        msg: "Name can only be string"
+        msg: "Name can only be string",
       });
     }
 
-    if(typeof raw_email !== "string") {
+    if (typeof raw_email !== "string") {
       return res.status(400).json({
-        msg: "Email can only be string"
+        msg: "Email can only be string",
       });
     }
 
-    if(typeof raw_username !== "string") {
+    if (typeof raw_username !== "string") {
       return res.status(400).json({
-        msg: "Username can only be string"
+        msg: "Username can only be string",
       });
     }
 
-    if(typeof password !== "string") {
+    if (typeof password !== "string") {
       return res.status(400).json({
-        msg: "Password can only be string"
+        msg: "Password can only be string",
       });
     }
 
@@ -53,43 +57,49 @@ export const signupController = async(req: Request, res: Response) => {
 
     // Validate the syntax of name, email, password, username
 
-    if(!validateName(name)) {
+    if (!validateName(name)) {
       return res.status(400).json({
-        msg: "Name should be non empty string with atmost 60 characters."
+        msg: "Name should be non empty string with atmost 60 characters.",
       });
     }
 
-    if(!validateEmail(email)) {
+    if (!validateEmail(email)) {
       return res.status(400).json({
-        msg: "Email syntax is invalid."
+        msg: "Email syntax is invalid.",
       });
     }
 
-    if(!validateUsername(username)) {
+    if (!validateUsername(username)) {
       return res.status(400).json({
-        msg: "Username is invalid."
+        msg: "Username is invalid.",
       });
     }
 
-    if(!validatePassword(password)) {
+    if (!validatePassword(password)) {
       return res.status(400).json({
-        msg: "Password is invalid."
+        msg: "Password is invalid.",
       });
     }
 
     // Check if the user with this email already exist
-    const existingEmailUser = await pool.query("SELECT user_id FROM users WHERE user_email = $1", [email]);
-    if(existingEmailUser.rows.length !== 0) {
+    const existingEmailUser = await pool.query(
+      "SELECT user_id FROM users WHERE user_email = $1",
+      [email],
+    );
+    if (existingEmailUser.rows.length !== 0) {
       return res.status(409).json({
-        msg: "User with this email already exist."
+        msg: "User with this email already exist.",
       });
     }
 
     // Check if the user with this username already exist
-    const existingUserNameUser = await pool.query("SELECT user_id FROM users WHERE user_username = $1", [username]);
-    if(existingUserNameUser.rows.length !== 0) {
+    const existingUserNameUser = await pool.query(
+      "SELECT user_id FROM users WHERE user_username = $1",
+      [username],
+    );
+    if (existingUserNameUser.rows.length !== 0) {
       return res.status(409).json({
-        msg: "User with this username already exist."
+        msg: "User with this username already exist.",
       });
     }
 
@@ -102,34 +112,45 @@ export const signupController = async(req: Request, res: Response) => {
     const hashPassword = await bcrypt.hash(password, saltRounds);
 
     // Add the user into database
-    const insertQuery = "INSERT INTO users(user_name, user_email, user_username, user_password) VALUES ($1, $2, $3, $4) RETURNING user_id, user_name, user_email, user_username";
-    const insertResult = await pool.query(insertQuery, [name, email, username, hashPassword]);
+    const insertQuery =
+      "INSERT INTO users(user_name, user_email, user_username, user_password) VALUES ($1, $2, $3, $4) RETURNING user_id, user_name, user_email, user_username";
+    const insertResult = await pool.query(insertQuery, [
+      name,
+      email,
+      username,
+      hashPassword,
+    ]);
 
     const user = insertResult.rows[0];
 
     // Generate a jwt for the user
-    
+
     const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET;
     const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 
-    const accessToken = jwt.sign({user_id: user.user_id}, JWT_ACCESS_SECRET, { expiresIn: "15m" });
-    const refreshToken = jwt.sign({user_id: user.user_id}, JWT_REFRESH_SECRET, { expiresIn: "7d" });
+    const accessToken = jwt.sign({ user_id: user.user_id }, JWT_ACCESS_SECRET, {
+      expiresIn: "15m",
+    });
+    const refreshToken = jwt.sign(
+      { user_id: user.user_id },
+      JWT_REFRESH_SECRET,
+      { expiresIn: "7d" },
+    );
 
     // return a 201 response
     return res.status(201).json({
       msg: "Ok",
       user,
       accessToken,
-      refreshToken
+      refreshToken,
     });
-
   } catch (error) {
     console.error(error);
     return res.status(500).json({
-      msg: "Internal Server Error"
+      msg: "Internal Server Error",
     });
   }
-}
+};
 
 export const loginController = async (req: Request, res: Response) => {
   try {
@@ -199,13 +220,16 @@ export const loginController = async (req: Request, res: Response) => {
       { expiresIn: "7d", algorithm: "HS256" },
     );
 
-    // res.cookie("refreshToken", refreshToken, {
-    //   httpOnly: true,
-    //   secure: true,
-    //   sameSite: "strict",
-    //   maxAge: 7 * 24 * 60 * 60 * 1000,
-    //   path: "/auth",
-    // });
+    const isWebClient = req.get("X-Client-Type") === "web";
+
+    if (isWebClient) {
+      res.cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      }); 
+    }
 
     return res.status(200).json({
       msg: "ok",
@@ -216,7 +240,8 @@ export const loginController = async (req: Request, res: Response) => {
         user_username: user.user_username,
       },
       accessToken,
-      refreshToken
+      // refreshToken
+      ...(isWebClient ? {} : { refreshToken }),
     });
   } catch (error) {
     console.error(error);
@@ -225,3 +250,78 @@ export const loginController = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const refreshController = async(req: Request, res: Response) => {
+  try {
+    const refreshToken = req.cookies?.refreshToken;
+
+    if(!refreshToken) {
+      return res.status(401).json({
+        msg: "Refresh Token is missing. Please Login again."
+      });
+    }
+
+    const refreshSecret = process.env.JWT_REFRESH_SECRET;
+    const accessSecret = process.env.JWT_ACCESS_SECRET;
+
+    if (!refreshSecret || !accessSecret) {
+      res.status(500).json({
+        message: "JWT configuration is missing.",
+      });
+      return;
+    }
+
+    let decoded: string | jwt.JwtPayload;
+    try {
+      decoded = jwt.verify(refreshToken, refreshSecret);
+      console.log(typeof decoded);
+    } catch {
+      console.log("Here")
+      return res.status(401).json({
+        msg: "Invalid refresh Token. Please log in again."
+      });
+    }
+
+    if (
+      typeof decoded === "string" ||
+      typeof decoded.user_id !== "string"
+    ) {
+      // console.log("Here")
+      res.status(401).json({
+        message: "Invalid refresh token payload.",
+      });
+      return;
+    }
+
+    let user_id = decoded.user_id;
+
+    const result = await pool.query(
+      "SELECT user_id, user_name, user_email, user_username FROM users WHERE user_id = $1;",
+      [user_id]
+    );
+
+    if(result.rows.length === 0) {
+      return res.status(401).json({
+        msg: "Invalid refresh token payload."
+      });
+    }
+
+    const accessToken = jwt.sign(
+      { user_id: user_id },
+      accessSecret,
+      { expiresIn: "15m" }
+    );
+
+    return res.json({
+      msg: "ok",
+      accessToken: accessToken,
+      user: result.rows[0]
+    })
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      msg: "Internal Server Error",
+    });
+  }
+}

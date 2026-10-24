@@ -10,13 +10,18 @@ import transactionsRouter from './routes/transactionsRoute.js';
 import cors from 'cors';
 import categoryRoute from './routes/categoryRoute.js';
 import { testDatabaseConnection } from './controllers/dbTestController.js';
+import cookieParser from 'cookie-parser';
 
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.WEB_APP_URI as string,
+  credentials: true
+}));
 app.use(express.json());
+app.use(cookieParser());
 
 app.get('/test', (req: Request, res: Response) => {
   return res.json({
