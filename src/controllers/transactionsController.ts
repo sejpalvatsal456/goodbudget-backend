@@ -67,13 +67,15 @@ export const getAllTransaction = async (
 ) => {
   try {
     const user_id = req.auth!.id;
-    const offset = req.query.offset;
+    const offset = req.query.offset ?? "0" ;
 
     const query = `
-      SELECT *
-      FROM transactions
-      WHERE user_id = $1
-      ORDER BY tran_date DESC, "created_at" DESC
+      SELECT t.*, c.cat_name
+      FROM transactions t
+      JOIN categories c
+      ON t.cat_id = c.cat_id
+      WHERE t.user_id = $1
+      ORDER BY t.tran_date DESC, t.created_at DESC
       LIMIT $2
       OFFSET $3
     `;
@@ -153,6 +155,8 @@ export const getAllTransactionForSpecificAccount = async (
 // ---------------------------------------------------------
 // CREATE TRANSACTION
 // ---------------------------------------------------------
+
+// TODO: change default tran_status from 'pending' to 'completed'
 
 export const issueTransactionController = async (
   req: Request,
