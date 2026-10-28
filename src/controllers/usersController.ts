@@ -160,8 +160,9 @@ export const deleteUserontroller = async(req: Request, res: Response) => {
 export const getBalanceController = async(req: Request, res: Response) => {
   try {
     const user_id = req.auth?.id;
-    const query = "SELECT SUM(acc_balance) as total_balance FROM accounts WHERE user_id = $1 AND acc_type <> 'credit_card'";
+    const query = "SELECT SUM(acc_balance) as total_balance FROM accounts WHERE user_id = $1 AND acc_type <> 'credit_card' AND acc_is_disabled IS FALSE";
     const result = await pool.query(query, [user_id]);
+    console.log(result.rows[0])
 
     return res.json({
       msg: "ok",

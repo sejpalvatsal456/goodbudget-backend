@@ -9,7 +9,7 @@ export const getAllAccountsController = async(req: Request, res: Response) => {
     const user_id = req.auth!.id;
 
     const RATE_LIMIT = process.env.RATE_LIMIT || "10";
-    const query = "SELECT * FROM accounts WHERE user_id = $1 AND acc_is_disabled = FALSE LIMIT $2";
+    const query = "SELECT * FROM accounts WHERE user_id = $1 LIMIT $2";
     const result = await pool.query(query, [user_id, parseInt(RATE_LIMIT)]);
 
     return res.json({
@@ -120,7 +120,7 @@ export const createAccountController = async(req: Request, res: Response) => {
 
 export const updateAccountController = async(req: Request, res: Response) => {
   try {
-    
+    console.log(req.body)
     const { acc_id, acc_name, acc_type, acc_is_disabled } = req.body as {
       acc_id: string,
       acc_name?: string,
