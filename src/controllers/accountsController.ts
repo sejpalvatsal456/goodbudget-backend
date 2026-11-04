@@ -7,9 +7,11 @@ export const getAllAccountsController = async(req: Request, res: Response) => {
   try {
 
     const user_id = req.auth!.id;
+    const allowDisabled = req.query.allowDisabled || false;
+    console.log("Query: " + allowDisabled)
 
     const RATE_LIMIT = process.env.RATE_LIMIT || "10";
-    const query = "SELECT * FROM accounts WHERE user_id = $1 LIMIT $2";
+    const query = `SELECT * FROM accounts WHERE user_id = $1 ${allowDisabled ? "" : " AND acc_is_disabled IS FALSE"} LIMIT $2`;
     const result = await pool.query(query, [user_id, parseInt(RATE_LIMIT)]);
 
     return res.json({

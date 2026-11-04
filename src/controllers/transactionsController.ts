@@ -72,9 +72,9 @@ export const getAllTransaction = async (
     const query = `
       SELECT t.*, c.cat_name
       FROM transactions t
-      JOIN categories c
+      LEFT JOIN categories c
       ON t.cat_id = c.cat_id
-      WHERE t.user_id = $1
+      WHERE t.user_id = $1 AND t.deleted_at IS NULL
       ORDER BY t.tran_date DESC, t.created_at DESC
       LIMIT $2
       OFFSET $3
@@ -566,7 +566,7 @@ export const softDeleteTransactionController = async (
 
     const updateBalanceQuery = `
       UPDATE accounts 
-      SET acc_bal ${sign}= $1
+      SET acc_balance = acc_balance ${sign} $1
       WHERE acc_id = $2 AND user_id = $3
       RETURNING *;
     `;

@@ -54,6 +54,6 @@ export const validateTransactionMode = (tran_type: string) => {
 }
 
 export const validateTransactionStatus = (tran_type: string) => {
-  const validTypes: string[] = ['pending', 'completed', 'failed'];
+  const validTypes: string[] = ['pending', 'success', 'failed'];
   return validTypes.includes(tran_type);
 }
