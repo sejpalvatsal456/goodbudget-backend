@@ -191,7 +191,7 @@ export const updateCategoryController = async(req: Request, res: Response) => {
         
         return res.json({
             msg: "ok",
-            result: result.rows
+            result: result.rows[0]
         });
 
     } catch (error) {

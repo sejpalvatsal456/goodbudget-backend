@@ -385,6 +385,7 @@ export const updateTransactionController = async (
       tran_merchant,
       tran_mode,
       tran_date,
+      cat_id
     } = req.body as {
       tran_id: string;
       tran_desc?: string;
@@ -392,6 +393,7 @@ export const updateTransactionController = async (
       tran_merchant?: string;
       tran_mode?: string;
       tran_date?: string;
+      cat_id?: string;
     };
 
     const user_id: string = req.auth!.id;
@@ -428,6 +430,22 @@ export const updateTransactionController = async (
       });
     }
 
+    if(cat_id !== undefined && cat_id !== null) {
+      if(!validate(cat_id)) {
+        return res.status(400).json({
+          msg: "Invalid category id."
+        });
+      }
+
+      const existedCategoryQuery = "SELECT * FROM categories WHERE cat_id = $1";
+      const existedCategoryResult = await pool.query(existedCategoryQuery, [cat_id]);
+      if(existedCategoryResult.rows[0] === 0) {
+        return res.status(400).json({
+          msg: "There is no category with this id."
+        });
+      }
+    }
+
     // -------------------------
     // Build dynamic UPDATE
     // -------------------------
@@ -458,6 +476,11 @@ export const updateTransactionController = async (
     if (tran_date !== undefined) {
       updatedFields.push(`tran_date = $${updatedValues.length + 1}`);
       updatedValues.push(tran_date);
+    }
+
+    if (cat_id !== undefined) {
+      updatedFields.push(`cat_id = $${updatedValues.length + 1}`);
+      updatedValues.push(cat_id);
     }
 
     // -------------------------
