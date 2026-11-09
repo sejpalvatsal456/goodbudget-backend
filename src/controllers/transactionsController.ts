@@ -508,7 +508,10 @@ export const updateTransactionController = async (
 
     const updateResult = await pool.query(updateQuery, updatedValues);
 
-    if (updateResult.rows.length === 0) {
+    const query = "SELECT t.*, c.cat_name FROM transactions t LEFT JOIN categories c ON t.cat_id = c.cat_id WHERE t.tran_id = $1;";
+    const result = await pool.query(query, [updateResult.rows[0].tran_id]);
+
+    if (result.rows.length === 0) {
       return res.status(404).json({
         msg: "Transaction with this id doesn't exist.",
       });
@@ -516,7 +519,7 @@ export const updateTransactionController = async (
 
     return res.json({
       msg: "ok",
-      result: updateResult.rows[0],
+      result: result.rows[0],
     });
   } catch (error: unknown) {
     console.error(error);
