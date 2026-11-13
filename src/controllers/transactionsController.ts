@@ -9,8 +9,17 @@ import {
   validateTransactionStatus,
   validateTransactionType,
 } from "../lib/validations.js";
+import {
+  applyToBalance,
+  balanceErrors,
+  lockAccount,
+  lockTransaction,
+  updateBalance,
+} from "../utils/utils.js";
 
 const RATE_LIMIT = Number.parseInt(process.env.RATE_LIMIT ?? "10", 10);
+
+// This function assumes that account does exist and the authorised user is updating it.
 
 // ---------------------------------------------------------
 // GET SPECIFIC TRANSACTION
@@ -61,13 +70,10 @@ export const getSpecificTransactionController = async (
 // GET ALL TRANSACTIONS
 // ---------------------------------------------------------
 
-export const getAllTransaction = async (
-  req: Request,
-  res: Response,
-) => {
+export const getAllTransaction = async (req: Request, res: Response) => {
   try {
     const user_id = req.auth!.id;
-    const offset = req.query.offset ?? "0" ;
+    const offset = req.query.offset ?? "0";
 
     const query = `
       SELECT t.*, c.cat_name
@@ -104,10 +110,10 @@ export const getAllTransactionForSpecificAccount = async (
   res: Response,
 ) => {
   try {
-    const account_id = req.params.id as string;
+    const acc_id = req.params.id as string;
     const user_id = req.auth!.id;
 
-    if (!validate(account_id)) {
+    if (!validate(acc_id)) {
       return res.status(400).json({
         msg: "Invalid account id.",
       });
@@ -120,8 +126,8 @@ export const getAllTransactionForSpecificAccount = async (
     `;
 
     const existedAccountResult = await pool.query(existedAccountQuery, [
-      account_id,
-      user_id
+      acc_id,
+      user_id,
     ]);
 
     if (existedAccountResult.rows.length === 0) {
@@ -133,11 +139,11 @@ export const getAllTransactionForSpecificAccount = async (
     const query = `
       SELECT *
       FROM transactions
-      WHERE account_id = $1 and user_id = $2
+      WHERE acc_id = $1 and user_id = $2
       ORDER BY tran_date DESC, "created_at" DESC
     `;
 
-    const result = await pool.query(query, [account_id, user_id]);
+    const result = await pool.query(query, [acc_id, user_id]);
 
     return res.json({
       msg: "ok",
@@ -156,18 +162,13 @@ export const getAllTransactionForSpecificAccount = async (
 // CREATE TRANSACTION
 // ---------------------------------------------------------
 
-// TODO: change default tran_status from 'pending' to 'completed'
-
-export const issueTransactionController = async (
-  req: Request,
-  res: Response,
-) => {
+export const issueTransactionController = async (req: Request, res: Response) => {
   const client = await pool.connect();
   try {
     const {
       tran_desc,
-      tran_status,
-      account_id,
+      tran_status = "success",
+      acc_id,
       tran_merchant,
       tran_mode,
       tran_type,
@@ -176,7 +177,7 @@ export const issueTransactionController = async (
     } = req.body as {
       tran_desc?: string;
       tran_status?: string;
-      account_id: string;
+      acc_id: string;
       tran_merchant: string;
       tran_mode?: string;
       tran_type: string;
@@ -186,183 +187,96 @@ export const issueTransactionController = async (
 
     const user_id: string = req.auth!.id;
 
-    // -------------------------
-    // Validate IDs
-    // -------------------------
+    // ---- validation ----
 
     if (!validate(user_id)) {
-      return res.status(400).json({
-        msg: "Invalid user id.",
-      });
+      return res.status(400).json({ msg: "Invalid user id." });
     }
-
-    if (!validate(account_id)) {
-      return res.status(400).json({
-        msg: "Invalid account id.",
-      });
+    if (!validate(acc_id)) {
+      return res.status(400).json({ msg: "Invalid account id." });
     }
-
-    // -------------------------
-    // Validate required fields
-    // -------------------------
-
     if (!tran_merchant) {
-      return res.status(400).json({
-        msg: "Transaction merchant is required.",
-      });
+      return res.status(400).json({ msg: "Transaction merchant is required." });
     }
-
     if (!validateBalance(tran_amount)) {
-      return res.status(400).json({
-        msg: "Transaction amount should be greater than 0.",
-      });
+      return res.status(400).json({ msg: "Transaction amount should be greater than 0." });
     }
-
     if (!validateTransactionType(tran_type)) {
-      return res.status(400).json({
-        msg: "Type can only be 'income', 'expense'.",
-      });
+      return res.status(400).json({ msg: "Type can only be 'income', 'expense'." });
     }
-
-    // -------------------------
-    // Validate optional fields
-    // (only if provided)
-    // -------------------------
-
-    if (tran_status !== undefined && !validateTransactionStatus(tran_status)) {
-      return res.status(400).json({
-        msg: "Status can only be 'pending', 'success', 'failed'."
-      });
+    if (!validateTransactionStatus(tran_status)) {
+      return res.status(400).json({ msg: "Status can only be 'pending', 'success', 'failed'." });
     }
-
     if (tran_mode !== undefined && !validateTransactionMode(tran_mode)) {
-      return res.status(400).json({
-        msg: "Mode can only be 'cash', 'online', 'credit_card'."
-      });
+      return res.status(400).json({ msg: "Mode can only be 'cash', 'online', 'credit_card'." });
     }
-
     if (tran_date !== undefined && !validateDate(tran_date)) {
-      return res.status(400).json({
-        msg: "Invalid transaction date.",
-      });
+      return res.status(400).json({ msg: "Invalid transaction date." });
     }
 
-    // -------------------------
-    // Build dynamic INSERT
-    // (omitted optional fields fall
-    // back to the schema's DEFAULT)
-    // -------------------------
+    // ---- build dynamic INSERT (omitted optional fields use the schema DEFAULT) ----
 
-    const insertedFields: string[] = ["user_id", "account_id", "tran_merchant", "tran_amount", "tran_type"];
-    const insertedValues: unknown[] = [user_id, account_id, tran_merchant, tran_amount, tran_type];
+    const insertedFields: string[] = ["user_id", "acc_id", "tran_merchant", "tran_amount", "tran_type", "tran_status"];
+    const insertedValues: unknown[] = [user_id, acc_id, tran_merchant, tran_amount, tran_type, tran_status];
 
     if (tran_desc !== undefined) {
       insertedFields.push("tran_desc");
       insertedValues.push(tran_desc);
     }
-
-    if (tran_status !== undefined) {
-      insertedFields.push("tran_status");
-      insertedValues.push(tran_status);
-    }
-
     if (tran_mode !== undefined) {
       insertedFields.push("tran_mode");
       insertedValues.push(tran_mode);
     }
-
     if (tran_date !== undefined) {
       insertedFields.push("tran_date");
       insertedValues.push(tran_date);
     }
 
+    // ---- transaction ----
+
     await client.query("BEGIN");
 
-    // get the account details
-
-    const accountResult = await client.query("SELECT acc_type, acc_balance FROM accounts WHERE acc_id = $1 AND user_id = $2 FOR UPDATE;", [account_id, user_id]);
-
-    if (accountResult.rows.length === 0) {
+    // ownership check, applies to every status
+    if (!(await lockAccount(client, acc_id, user_id))) {
       await client.query("ROLLBACK");
-      return res.status(404).json({ msg: "Account doesn't exist or doesn't belong to this user." });
+      return res.status(404).json({ msg: balanceErrors.not_found.msg });
     }
 
-    const { acc_type } = accountResult.rows[0];
-    const acc_balance = Number(accountResult.rows[0].acc_balance)
-
-    if (
-      ["cash", "current", "saving"].includes(acc_type) &&
-      tran_type === "expense" &&
-      tran_amount > acc_balance
-    ) {
-      await client.query("ROLLBACK");
-      return res.status(422).json({
-        msg: "Transaction amount is greater than account balance, it can not be processed.",
-      });
-    }
-
-    const balanceUpdateQuery = `
-      UPDATE accounts
-      SET acc_balance = acc_balance ${tran_type === "income" ? "+" : "-"} $1
-      WHERE acc_id = $2 AND user_id = $3
-      RETURNING acc_id
-    `;
-    const balanceResult = await client.query(balanceUpdateQuery, [tran_amount, account_id, user_id]);
-
-    if (balanceResult.rows.length === 0) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ msg: "Account doesn't exist or doesn't belong to this user." });
+    // only completed transactions touch the balance
+    if (tran_status === "success") {
+      const outcome = await applyToBalance(client, acc_id, user_id, tran_type, tran_amount);
+      if (outcome !== "ok") {
+        await client.query("ROLLBACK");
+        return res.status(balanceErrors[outcome].status).json({ msg: balanceErrors[outcome].msg });
+      }
     }
 
     const placeholders = insertedValues.map((_, i) => `$${i + 1}`).join(", ");
-    const insertQuery = `
-      INSERT INTO transactions (${insertedFields.join(", ")})
-      VALUES (${placeholders})
-      RETURNING *
-    `;
-    const transactionResult = await client.query(insertQuery, insertedValues);
+    const { rows } = await client.query(
+      `INSERT INTO transactions (${insertedFields.join(", ")}) VALUES (${placeholders}) RETURNING *`,
+      insertedValues,
+    );
 
     await client.query("COMMIT");
-
-    return res.status(201).json({
-      msg: "ok",
-      result: transactionResult.rows[0],
-    });
-
+    return res.status(201).json({ msg: "ok", result: rows[0] });
   } catch (error: unknown) {
-    await client.query("ROLLBACK").catch(() => {}); // no-op if no txn was open
+    await client.query("ROLLBACK").catch(() => {});
     console.error(error);
 
-    if (typeof error === "object" && error !== null && "code" in error) {
-      const pgError = error as {
-        code: string;
-      };
+    const code = (error as { code?: string } | null)?.code;
 
-      // Invalid PostgreSQL enum value
-      if (pgError.code === "22P02") {
-        return res.status(400).json({
-          msg: "Invalid transaction status, mode or type.",
-        });
-      }
-
-      // Foreign key violation
-      if (pgError.code === "23503") {
-        return res.status(400).json({
-          msg: "Invalid user or account.",
-        });
-      }
-
-      // NOT NULL violation (e.g. a column with no schema DEFAULT was omitted)
-      if (pgError.code === "23502") {
-        return res.status(400).json({
-          msg: "Missing required transaction field.",
-        });
-      }
+    // 22P02: invalid enum value, 23503: foreign key violation, 23502: NOT NULL violation
+    if (code === "22P02") {
+      return res.status(400).json({ msg: "Invalid transaction status, mode or type." });
+    }
+    if (code === "23503") {
+      return res.status(400).json({ msg: "Invalid user or account." });
+    }
+    if (code === "23502") {
+      return res.status(400).json({ msg: "Missing required transaction field." });
     }
 
-    return res.status(500).json({
-      msg: "Internal Server Error.",
-    });
+    return res.status(500).json({ msg: "Internal Server Error." });
   } finally {
     client.release();
   }
@@ -376,6 +290,7 @@ export const updateTransactionController = async (
   req: Request,
   res: Response,
 ) => {
+  const client = await pool.connect();
   try {
     const {
       tran_id,
@@ -384,7 +299,8 @@ export const updateTransactionController = async (
       tran_merchant,
       tran_mode,
       tran_date,
-      cat_id
+      tran_amount,
+      cat_id,
     } = req.body as {
       tran_id: string;
       tran_desc?: string;
@@ -392,232 +308,191 @@ export const updateTransactionController = async (
       tran_merchant?: string;
       tran_mode?: string;
       tran_date?: string;
-      cat_id?: string;
+      tran_amount?: number;
+      cat_id?: string | null;
     };
 
     const user_id: string = req.auth!.id;
 
-    // -------------------------
-    // Validate transaction ID
-    // -------------------------
+    // ---- validation (no DB transaction needed yet) ----
 
     if (!validate(tran_id)) {
-      return res.status(400).json({
-        msg: "Invalid transaction id.",
-      });
+      return res.status(400).json({ msg: "Invalid transaction id." });
     }
-
-    // -------------------------
-    // Validate fields
-    // -------------------------
-
     if (tran_status !== undefined && !validateTransactionStatus(tran_status)) {
-      return res.status(400).json({
-        msg: "Status can only be 'pending', 'completed', 'failed'.",
-      });
+      return res
+        .status(400)
+        .json({ msg: "Status can only be 'pending', 'success', 'failed'." });
     }
-
     if (tran_mode !== undefined && !validateTransactionMode(tran_mode)) {
-      return res.status(400).json({
-        msg: "Mode can only be 'cash', 'online', 'credit_card'.",
-      });
+      return res
+        .status(400)
+        .json({ msg: "Mode can only be 'cash', 'online', 'credit_card'." });
     }
-
     if (tran_date !== undefined && !validateDate(tran_date)) {
-      return res.status(400).json({
-        msg: "Invalid transaction date.",
-      });
+      return res.status(400).json({ msg: "Invalid transaction date." });
+    }
+    if (tran_amount !== undefined && !validateBalance(tran_amount)) {
+      return res.status(400).json({ msg: "Invalid transaction amount." });
+    }
+    if (cat_id !== undefined && cat_id !== null) {
+      if (!validate(cat_id)) {
+        return res.status(400).json({ msg: "Invalid category id." });
+      }
+      const category = await client.query(
+        "SELECT 1 FROM categories WHERE cat_id = $1",
+        [cat_id],
+      );
+      if (category.rows.length === 0) {
+        return res
+          .status(400)
+          .json({ msg: "There is no category with this id." });
+      }
     }
 
-    if(cat_id !== undefined && cat_id !== null) {
-      if(!validate(cat_id)) {
-        return res.status(400).json({
-          msg: "Invalid category id."
-        });
-      }
+    // ---- build dynamic UPDATE ----
 
-      const existedCategoryQuery = "SELECT * FROM categories WHERE cat_id = $1";
-      const existedCategoryResult = await pool.query(existedCategoryQuery, [cat_id]);
-      if(existedCategoryResult.rows[0] === 0) {
-        return res.status(400).json({
-          msg: "There is no category with this id."
-        });
-      }
-    }
-
-    // -------------------------
-    // Build dynamic UPDATE
-    // -------------------------
-
+    const fields = {
+      tran_desc,
+      tran_status,
+      tran_merchant,
+      tran_mode,
+      tran_date,
+      tran_amount,
+      cat_id,
+    };
     const updatedFields: string[] = [];
     const updatedValues: unknown[] = [];
 
-    if (tran_desc !== undefined) {
-      updatedFields.push(`tran_desc = $${updatedValues.length + 1}`);
-      updatedValues.push(tran_desc);
-    }
-
-    if (tran_status !== undefined) {
-      updatedFields.push(`tran_status = $${updatedValues.length + 1}`);
-      updatedValues.push(tran_status);
-    }
-
-    if (tran_merchant !== undefined) {
-      updatedFields.push(`tran_merchant = $${updatedValues.length + 1}`);
-      updatedValues.push(tran_merchant);
-    }
-
-    if (tran_mode !== undefined) {
-      updatedFields.push(`tran_mode = $${updatedValues.length + 1}`);
-      updatedValues.push(tran_mode);
-    }
-
-    if (tran_date !== undefined) {
-      updatedFields.push(`tran_date = $${updatedValues.length + 1}`);
-      updatedValues.push(tran_date);
-    }
-
-    if (cat_id !== undefined) {
-      updatedFields.push(`cat_id = $${updatedValues.length + 1}`);
-      updatedValues.push(cat_id);
-    }
-
-    // -------------------------
-    // Nothing to update
-    // -------------------------
-
-    if (updatedFields.length === 0) {
-      return res.status(400).json({
-        msg: "No fields provided for update.",
-      });
-    }
-
-    // Always update updated_at
-    updatedFields.push(`"updated_at" = now()`);
-
-    updatedValues.push(tran_id);
-    updatedValues.push(user_id);
-
-    const updateQuery = `
-      UPDATE transactions
-      SET ${updatedFields.join(", ")}
-      WHERE tran_id = $${updatedValues.length - 1} AND user_id = $${updatedValues.length} AND deleted_at IS NULL
-      RETURNING *
-    `;
-
-    const updateResult = await pool.query(updateQuery, updatedValues);
-
-    const query = "SELECT t.*, c.cat_name FROM transactions t LEFT JOIN categories c ON t.cat_id = c.cat_id WHERE t.tran_id = $1;";
-    const result = await pool.query(query, [updateResult.rows[0].tran_id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        msg: "Transaction with this id doesn't exist.",
-      });
-    }
-
-    return res.json({
-      msg: "ok",
-      result: result.rows[0],
-    });
-  } catch (error: unknown) {
-    console.error(error);
-
-    if (typeof error === "object" && error !== null && "code" in error) {
-      const pgError = error as {
-        code: string;
-      };
-
-      if (pgError.code === "22P02") {
-        return res.status(400).json({
-          msg: "Invalid transaction status or mode.",
-        });
+    for (const [column, value] of Object.entries(fields)) {
+      if (value !== undefined) {
+        updatedValues.push(value);
+        updatedFields.push(`${column} = $${updatedValues.length}`);
       }
     }
 
-    return res.status(500).json({
-      msg: "Internal Server Error.",
-    });
+    if (updatedFields.length === 0) {
+      return res.status(400).json({ msg: "No fields provided for update." });
+    }
+
+    updatedFields.push(`"updated_at" = now()`);
+    updatedValues.push(tran_id, user_id);
+
+    // ---- transaction ----
+
+    await client.query("BEGIN");
+
+    const lockResult = await lockTransaction(client, tran_id, user_id);
+    if (!lockResult) {
+      await client.query("ROLLBACK");
+      return res
+        .status(404)
+        .json({ msg: "Transaction with this id doesn't exist." });
+    }
+
+    // completed and failed transactions are final
+    if (lockResult.rows[0].tran_status !== "pending") {
+      await client.query("ROLLBACK");
+      return res
+        .status(409)
+        .json({ msg: "A completed or failed transaction can't be updated." });
+    }
+
+    const updateResult = await client.query(
+      `UPDATE transactions SET ${updatedFields.join(", ")}
+       WHERE tran_id = $${updatedValues.length - 1} AND user_id = $${updatedValues.length}
+       RETURNING *`,
+      updatedValues,
+    );
+    const updated = updateResult.rows[0];
+
+    // pending -> success: apply to the balance using the final amount
+    if (tran_status === "success") {
+      const outcome = await applyToBalance(
+        client,
+        updated.acc_id,
+        user_id,
+        updated.tran_type,
+        updated.tran_amount,
+      );
+      if (outcome !== "ok") {
+        await client.query("ROLLBACK");
+        return res
+          .status(balanceErrors[outcome].status)
+          .json({ msg: balanceErrors[outcome].msg });
+      }
+    }
+
+    const result = await client.query(
+      "SELECT t.*, c.cat_name FROM transactions t LEFT JOIN categories c ON t.cat_id = c.cat_id WHERE t.tran_id = $1;",
+      [tran_id],
+    );
+
+    await client.query("COMMIT");
+    return res.json({ msg: "ok", result: result.rows[0] });
+  } catch (error: unknown) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error(error);
+
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      (error as { code?: string }).code === "22P02"
+    ) {
+      return res
+        .status(400)
+        .json({ msg: "Invalid transaction status or mode." });
+    }
+
+    return res.status(500).json({ msg: "Internal Server Error." });
+  } finally {
+    client.release();
   }
 };
-
 // ---------------------------------------------------------
 // DELETE TRANSACTION
 // ---------------------------------------------------------
 
-export const softDeleteTransactionController = async (
-  req: Request,
-  res: Response,
-) => {
+export const softDeleteTransactionController = async (req: Request, res: Response) => {
   const client = await pool.connect();
   try {
-    const { tran_id } = req.body as {
-      tran_id: string;
-    };
-
+    const { tran_id } = req.body as { tran_id: string };
     const user_id: string = req.auth!.id;
 
-    // Validation
-
     if (!validate(tran_id)) {
-      return res.status(400).json({
-        msg: "Invalid transaction id.",
-      });
+      return res.status(400).json({ msg: "Invalid transaction id." });
     }
 
     await client.query("BEGIN");
 
-    const deleteQuery = `
-      UPDATE transactions
-      SET deleted_at = now()
-      WHERE user_id = $1 AND tran_id = $2 AND deleted_at IS NULL
-      RETURNING *;
-    `;
-
-    const deleteResult = await client.query(deleteQuery, [user_id, tran_id]);
-
-    if (deleteResult.rows.length === 0) {
+    // lock the transaction row (also filters out already-deleted rows)
+    const lockResult = await lockTransaction(client, tran_id, user_id);
+    if (!lockResult) {
       await client.query("ROLLBACK");
-      return res.status(404).json({
-        msg: "Transaction with this id doesn't exist.",
-      });
+      return res.status(404).json({ msg: "Transaction with this id doesn't exist." });
+    }
+    const { acc_id, tran_type, tran_amount, tran_status } = lockResult.rows[0];
+
+    // only successful transactions ever changed the balance, so only those are reverted
+    if (tran_status === "success") {
+      const outcome = await applyToBalance(client, acc_id, user_id, tran_type, tran_amount, true);
+      if (outcome !== "ok") {
+        await client.query("ROLLBACK");
+        return res.status(balanceErrors[outcome].status).json({ msg: balanceErrors[outcome].msg });
+      }
     }
 
-    // Update the account balance
-    const acc_id = deleteResult.rows[0].account_id;
-    const tran_type = deleteResult.rows[0].tran_type;
-    const sign = tran_type === "income" ? "-" : "+";
-    const tran_amount = deleteResult.rows[0].tran_amount;
-
-    const updateBalanceQuery = `
-      UPDATE accounts 
-      SET acc_balance = acc_balance ${sign} $1
-      WHERE acc_id = $2 AND user_id = $3
-      RETURNING *;
-    `;
-
-    const updateBalanceResult = await client.query(updateBalanceQuery, [tran_amount, acc_id, user_id]);
-
-    if(updateBalanceResult.rows.length === 0) {
-      await client.query("ROLLBACK");
-      return res.status(500).json({
-        msg: "Failed to update the balance."
-      });
-    }
+    const deleteResult = await client.query(
+      "UPDATE transactions SET deleted_at = now() WHERE tran_id = $1 AND user_id = $2 RETURNING *",
+      [tran_id, user_id],
+    );
 
     await client.query("COMMIT");
-
-    return res.json({
-      msg: "ok",
-      result: deleteResult.rows[0],
-    });
-  } catch (error) {
+    return res.json({ msg: "ok", result: deleteResult.rows[0] });
+  } catch (error: unknown) {
+    await client.query("ROLLBACK").catch(() => {});
     console.error(error);
-    await client.query("ROLLBACK");
-
-    return res.status(500).json({
-      msg: "Internal Server Error.",
-    });
+    return res.status(500).json({ msg: "Internal Server Error." });
   } finally {
     client.release();
   }
