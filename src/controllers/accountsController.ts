@@ -8,7 +8,6 @@ export const getAllAccountsController = async(req: Request, res: Response) => {
 
     const user_id = req.auth!.id;
     const allowDisabled = req.query.allowDisabled || false;
-    console.log("Query: " + allowDisabled)
 
     const RATE_LIMIT = process.env.RATE_LIMIT || "10";
     const query = `SELECT * FROM accounts WHERE user_id = $1 ${allowDisabled ? "" : " AND acc_is_disabled IS FALSE"} LIMIT $2`;
@@ -122,7 +121,6 @@ export const createAccountController = async(req: Request, res: Response) => {
 
 export const updateAccountController = async(req: Request, res: Response) => {
   try {
-    console.log(req.body)
     const { acc_id, acc_name, acc_type, acc_is_disabled } = req.body as {
       acc_id: string,
       acc_name?: string,

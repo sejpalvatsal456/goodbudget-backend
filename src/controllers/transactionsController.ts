@@ -231,7 +231,7 @@ export const issueTransactionController = async (
 
     if (tran_status !== undefined && !validateTransactionStatus(tran_status)) {
       return res.status(400).json({
-        msg: "Status can only be 'pending', 'completed', 'failed'."
+        msg: "Status can only be 'pending', 'success', 'failed'."
       });
     }
 
@@ -320,7 +320,6 @@ export const issueTransactionController = async (
       VALUES (${placeholders})
       RETURNING *
     `;
-    console.log(insertQuery);
     const transactionResult = await client.query(insertQuery, insertedValues);
 
     await client.query("COMMIT");
