@@ -174,6 +174,7 @@ export const issueTransactionController = async (req: Request, res: Response) =>
       tran_type,
       tran_date,
       tran_amount,
+      cat_id
     } = req.body as {
       tran_desc?: string;
       tran_status?: string;
@@ -183,6 +184,7 @@ export const issueTransactionController = async (req: Request, res: Response) =>
       tran_type: string;
       tran_date?: string;
       tran_amount: number;
+      cat_id?: string;
     };
 
     const user_id: string = req.auth!.id;
@@ -194,6 +196,9 @@ export const issueTransactionController = async (req: Request, res: Response) =>
     }
     if (!validate(acc_id)) {
       return res.status(400).json({ msg: "Invalid account id." });
+    }
+    if(cat_id !== undefined && !validate(cat_id)) {
+      return res.status(400).json({ msg: "Invalid category id." })
     }
     if (!tran_merchant) {
       return res.status(400).json({ msg: "Transaction merchant is required." });
@@ -231,6 +236,10 @@ export const issueTransactionController = async (req: Request, res: Response) =>
       insertedFields.push("tran_date");
       insertedValues.push(tran_date);
     }
+    if (cat_id != undefined) {
+      insertedFields.push("cat_id");
+      insertedValues.push(cat_id);
+    }
 
     // ---- transaction ----
 
@@ -255,6 +264,11 @@ export const issueTransactionController = async (req: Request, res: Response) =>
     const { rows } = await client.query(
       `INSERT INTO transactions (${insertedFields.join(", ")}) VALUES (${placeholders}) RETURNING *`,
       insertedValues,
+    );
+
+    const result = await client.query(
+      "SELECT t.*, c.cat_name FROM transactions t LEFT JOIN categories c ON t.cat_id = c.cat_id WHERE t.tran_id = $1",
+      [rows[0].tran_id]
     );
 
     await client.query("COMMIT");

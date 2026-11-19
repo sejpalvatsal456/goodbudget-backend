@@ -40,7 +40,7 @@ export const validateAccountType = (acc_type: string) => {
 }
 
 export const validateDate = (date: string) => {
-  return !Number.isNaN(Date.parse(date))
+  return !Number.isNaN(new Date(date))
 }
 
 export const validateTransactionType = (tran_type: string) => {
