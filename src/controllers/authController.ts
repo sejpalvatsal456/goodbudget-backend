@@ -225,8 +225,9 @@ export const loginController = async (req: Request, res: Response) => {
     if (isWebClient) {
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        secure: true,
+        sameSite: "none",
+        path: "/",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       }); 
     }
